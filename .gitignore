@@ -1,0 +1,5 @@
+# Rust: kết quả build
+api/target/
+
+# Bí mật và cấu hình cục bộ (không bao giờ commit)
+.env
