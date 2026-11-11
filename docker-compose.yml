@@ -43,6 +43,31 @@ services:
     depends_on:
       db:
         condition: service_healthy
+  redis:
+    image: redis:8.6.4
+    restart: unless-stopped
+    command:
+      [
+        "redis-server",
+        "--requirepass",
+        "${REDIS_PASSWORD:?thiếu REDIS_PASSWORD trong .env}",
+      ]
+    ports:
+      - "127.0.0.1:6379:6379"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "redis-cli",
+          "--no-auth-warning",
+          "-a",
+          "${REDIS_PASSWORD}",
+          "ping",
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
   adminer:
     image: adminer:5
     restart: unless-stopped
