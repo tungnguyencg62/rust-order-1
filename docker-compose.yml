@@ -67,6 +67,24 @@ services:
       interval: 5s
       timeout: 3s
       retries: 10
+  centrifugo:
+    image: centrifugo/centrifugo:v6.8.1
+    restart: unless-stopped
+    command: ["centrifugo", "-c", "config.json"]
+    volumes:
+      - ./docker/centrifugo/config.json:/centrifugo/config.json:ro
+    ports:
+      - "127.0.0.1:8000:8000"
+    ulimits:
+      nofile:
+        soft: 65535
+        hard: 65535
+    healthcheck:
+      test:
+        ["CMD", "wget", "--quiet", "--spider", "http://127.0.0.1:8000/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
 
   adminer:
     image: adminer:5
