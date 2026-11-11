@@ -20,5 +20,38 @@ services:
       interval: 5s
       timeout: 3s
       retries: 10
+  auth:
+    image: supabase/gotrue:v2.197.0
+    restart: unless-stopped
+    environment:
+      GOTRUE_API_HOST: 0.0.0.0
+      GOTRUE_API_PORT: 9999
+      API_EXTERNAL_URL: http://localhost:9999
+
+      GOTRUE_DB_DRIVER: postgres
+      GOTRUE_DB_DATABASE_URL: postgres://supabase_auth_admin:${AUTH_DB_PASSWORD}@db:5432/postgres
+
+      GOTRUE_SITE_URL: http://localhost:3000
+      GOTRUE_DISABLE_SIGNUP: "false"
+      GOTRUE_MAILER_AUTOCONFIRM: "true"
+
+      GOTRUE_JWT_SECRET: ${JWT_SECRET:?thiếu JWT_SECRET trong .env}
+      GOTRUE_JWT_EXP: 300
+      GOTRUE_JWT_AUD: authenticated
+    ports:
+      - "127.0.0.1:9999:9999"
+    depends_on:
+      db:
+        condition: service_healthy
+  adminer:
+    image: adminer:5
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8081:8080"
+    environment:
+      ADMINER_DEFAULT_SERVER: db
+    depends_on:
+      db:
+        condition: service_healthy
 volumes:
   pg_data:
