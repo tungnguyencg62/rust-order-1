@@ -1,7 +1,16 @@
-fn main() {
-    let mut app_name = "order-api";
-    println!("Khởi động {app_name}");
+use axum::{Router, routing::get};
 
-    app_name = "order-api-v2";
-    println!("Đổi tên thành {app_name}");
+#[tokio::main]
+async fn main() {
+    let app = Router::new().route("/", get(root));
+
+    let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();
+
+    print!("Đang chạy tại http://0.0.0.0:3000");
+
+    axum::serve(listener, app).await.unwrap();
+}
+
+async fn root() -> &'static str {
+    "Hello, World!"
 }
