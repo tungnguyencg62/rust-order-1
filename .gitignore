@@ -5,3 +5,5 @@ api/target/
 .env
 
 docker/centrifugo/config.json
+
+example.json
