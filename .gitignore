@@ -6,4 +6,8 @@ api/target/
 
 docker/centrifugo/config.json
 
+# Env riêng của crate api
+api/.env
+
 example.json
+proccess.txt
