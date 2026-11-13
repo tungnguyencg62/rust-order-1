@@ -2,6 +2,7 @@ use axum::extract::State;
 use axum::{Json, Router, routing::get};
 use serde::Serialize;
 use std::env;
+use std::fmt;
 use std::sync::Arc;
 
 #[derive(Clone)]
@@ -9,10 +10,18 @@ struct AppState {
     config: Arc<Config>,
 }
 
-#[derive(Debug)]
 struct Config {
     port: u16,
     database_url: String,
+}
+
+impl fmt::Debug for Config {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Config")
+            .field("port", &self.port)
+            .field("database_url", &"<redacted>")
+            .finish()
+    }
 }
 
 fn load_config() -> Result<Config, String> {
@@ -29,14 +38,18 @@ fn load_config() -> Result<Config, String> {
 
 #[tokio::main]
 async fn main() {
+    tracing_subscriber::fmt()
+        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+        .init();
     let config = match load_config() {
         Ok(config) => config,
         Err(e) => {
-            eprintln!("Lỗi cấu hình: {}", e);
+            tracing::error!("lỗi cấu hình: {e}");
             std::process::exit(1);
         }
     };
-    println!("Cấu hình: {config:?}");
+    tracing::info!(?config, "đã nạp cấu hình");
+
     let port = config.port;
     let state = AppState {
         config: Arc::new(config),
@@ -45,12 +58,13 @@ async fn main() {
     let app = Router::new()
         .route("/", get(root))
         .route("/health", get(health))
-        .with_state(state);
+        .with_state(state)
+        .layer(tower_http::trace::TraceLayer::new_for_http());
 
     let addr = format!("0.0.0.0:{port}");
     let listener = tokio::net::TcpListener::bind(&addr).await.unwrap();
 
-    println!("Đang chạy tại http://{addr}");
+    tracing::info!(%addr, "server đang chạy");
 
     axum::serve(listener, app).await.unwrap();
 }
