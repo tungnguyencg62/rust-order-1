@@ -1,6 +1,13 @@
+use axum::extract::State;
 use axum::{Json, Router, routing::get};
 use serde::Serialize;
 use std::env;
+use std::sync::Arc;
+
+#[derive(Clone)]
+struct AppState {
+    config: Arc<Config>,
+}
 
 #[derive(Debug)]
 struct Config {
@@ -30,12 +37,17 @@ async fn main() {
         }
     };
     println!("Cấu hình: {config:?}");
+    let port = config.port;
+    let state = AppState {
+        config: Arc::new(config),
+    };
 
     let app = Router::new()
         .route("/", get(root))
-        .route("/health", get(health));
+        .route("/health", get(health))
+        .with_state(state);
 
-    let addr = format!("0.0.0.0:{}", config.port);
+    let addr = format!("0.0.0.0:{port}");
     let listener = tokio::net::TcpListener::bind(&addr).await.unwrap();
 
     println!("Đang chạy tại http://{addr}");
@@ -51,10 +63,12 @@ async fn root() -> &'static str {
 struct HealthResponse {
     status: &'static str,
     service: &'static str,
+    port: u16,
 }
-async fn health() -> Json<HealthResponse> {
+async fn health(State(state): State<AppState>) -> Json<HealthResponse> {
     Json(HealthResponse {
         status: "OK",
         service: "order-api",
+        port: state.config.port,
     })
 }
