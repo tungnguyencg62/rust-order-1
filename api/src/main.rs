@@ -1,84 +1,18 @@
-use axum::extract::State;
-use axum::{
-    Json, Router,
-    http::StatusCode,
-    response::{IntoResponse, Response},
-    routing::get,
-};
-use serde::Serialize;
-use std::env;
-use std::fmt;
+mod config;
+mod error;
+mod routes;
+mod shutdown;
+mod state;
+
+use state::AppState;
 use std::sync::Arc;
-use thiserror::Error;
-
-#[derive(Debug, Error)]
-enum AppError {
-    #[error("lỗi cấu hình: {0}")]
-    Config(String),
-
-    #[error("không tìm thấy: {0}")]
-    NotFound(String),
-
-    #[error("lỗi máy chủ nội bộ: {0}")]
-    Internal(String),
-}
-
-impl IntoResponse for AppError {
-    fn into_response(self) -> Response {
-        let (status, public_message) = match &self {
-            AppError::Config(_) => (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "lỗi cấu hình nội bộ".to_string(),
-            ),
-            AppError::NotFound(msg) => (StatusCode::NOT_FOUND, msg.clone()),
-            AppError::Internal(_) => (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "đã có lỗi xảy ra, vui lòng thử lại".to_string(),
-            ),
-        };
-        tracing::error!(error = %self, status = %status, "request thất bại");
-        let body = axum::Json(serde_json::json!({ "error": public_message }));
-        (status, body).into_response()
-    }
-}
-
-#[derive(Clone)]
-struct AppState {
-    config: Arc<Config>,
-}
-
-struct Config {
-    port: u16,
-    database_url: String,
-}
-
-impl fmt::Debug for Config {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("Config")
-            .field("port", &self.port)
-            .field("database_url", &"<redacted>")
-            .finish()
-    }
-}
-
-fn load_config() -> Result<Config, AppError> {
-    let port = env::var("PORT")
-        .ok()
-        .and_then(|p| p.parse::<u16>().ok())
-        .unwrap_or(3000);
-
-    let database_url = env::var("DATABASE_URL")
-        .map_err(|_| AppError::Config("thiếu biến DATABASE_URL trong môi trường".to_string()))?;
-
-    Ok(Config { port, database_url })
-}
 
 #[tokio::main]
 async fn main() {
     tracing_subscriber::fmt()
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
         .init();
-    let config = match load_config() {
+    let config = match config::load() {
         Ok(config) => config,
         Err(e) => {
             tracing::error!("lỗi cấu hình: {e}");
@@ -92,14 +26,7 @@ async fn main() {
         config: Arc::new(config),
     };
 
-    let app = Router::new()
-        .route("/", get(root))
-        .route("/health", get(health))
-        .route("/slow", get(slow))
-        .route("/boom/not-found", get(boom_not_found))
-        .route("/boom/internal", get(boom_internal))
-        .with_state(state)
-        .layer(tower_http::trace::TraceLayer::new_for_http());
+    let app = routes::router(state);
 
     let addr = format!("0.0.0.0:{port}");
     let listener = tokio::net::TcpListener::bind(&addr).await.unwrap();
@@ -107,73 +34,8 @@ async fn main() {
     tracing::info!(%addr, "server đang chạy");
 
     axum::serve(listener, app)
-        .with_graceful_shutdown(shutdown_signal())
+        .with_graceful_shutdown(shutdown::signal())
         .await
         .unwrap();
     tracing::info!("server đã tắt hoàn toàn");
-}
-
-async fn root() -> &'static str {
-    "Hello, World!"
-}
-
-async fn slow() -> &'static str {
-    tracing::info!("bắt đầu xử lý request chậm...");
-    tokio::time::sleep(std::time::Duration::from_secs(5)).await;
-    tracing::info!("đã xử lý xong request chậm");
-    "Xong việc chậm!"
-}
-
-#[derive(Serialize)]
-struct HealthResponse {
-    status: &'static str,
-    service: &'static str,
-    port: u16,
-}
-async fn health(State(state): State<AppState>) -> Json<HealthResponse> {
-    Json(HealthResponse {
-        status: "OK",
-        service: "order-api",
-        port: state.config.port,
-    })
-}
-async fn boom_not_found() -> Result<&'static str, AppError> {
-    Err(AppError::NotFound(
-        "đơn hàng #123 không tồn tại".to_string(),
-    ))
-}
-
-async fn boom_internal() -> Result<&'static str, AppError> {
-    Err(AppError::Internal(
-        "mô phỏng lỗi kết nối database".to_string(),
-    ))
-}
-
-async fn shutdown_signal() {
-    let ctrl_c = async {
-        tokio::signal::ctrl_c()
-            .await
-            .expect("failed to install Ctrl+C handler");
-    };
-
-    #[cfg(unix)]
-    let terminate = async {
-        tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
-            .expect("failed to install SIGTERM handler")
-            .recv()
-            .await;
-    };
-
-    #[cfg(not(unix))]
-    let terminate = std::future::pending::<()>();
-
-    tokio::select! {
-            _ = ctrl_c => {
-            tracing::info!("nhận Ctrl+C, bắt đầu tắt server...");
-        }
-        _ = terminate => {
-            tracing::info!("nhận SIGTERM, bắt đầu tắt server...");
-        }
-
-    }
 }
