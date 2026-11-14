@@ -95,6 +95,7 @@ async fn main() {
     let app = Router::new()
         .route("/", get(root))
         .route("/health", get(health))
+        .route("/slow", get(slow))
         .route("/boom/not-found", get(boom_not_found))
         .route("/boom/internal", get(boom_internal))
         .with_state(state)
@@ -105,11 +106,22 @@ async fn main() {
 
     tracing::info!(%addr, "server đang chạy");
 
-    axum::serve(listener, app).await.unwrap();
+    axum::serve(listener, app)
+        .with_graceful_shutdown(shutdown_signal())
+        .await
+        .unwrap();
+    tracing::info!("server đã tắt hoàn toàn");
 }
 
 async fn root() -> &'static str {
     "Hello, World!"
+}
+
+async fn slow() -> &'static str {
+    tracing::info!("bắt đầu xử lý request chậm...");
+    tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+    tracing::info!("đã xử lý xong request chậm");
+    "Xong việc chậm!"
 }
 
 #[derive(Serialize)]
@@ -135,4 +147,33 @@ async fn boom_internal() -> Result<&'static str, AppError> {
     Err(AppError::Internal(
         "mô phỏng lỗi kết nối database".to_string(),
     ))
+}
+
+async fn shutdown_signal() {
+    let ctrl_c = async {
+        tokio::signal::ctrl_c()
+            .await
+            .expect("failed to install Ctrl+C handler");
+    };
+
+    #[cfg(unix)]
+    let terminate = async {
+        tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+            .expect("failed to install SIGTERM handler")
+            .recv()
+            .await;
+    };
+
+    #[cfg(not(unix))]
+    let terminate = std::future::pending::<()>();
+
+    tokio::select! {
+            _ = ctrl_c => {
+            tracing::info!("nhận Ctrl+C, bắt đầu tắt server...");
+        }
+        _ = terminate => {
+            tracing::info!("nhận SIGTERM, bắt đầu tắt server...");
+        }
+
+    }
 }
