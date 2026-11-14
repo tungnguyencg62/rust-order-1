@@ -14,6 +14,9 @@ pub enum AppError {
 
     #[error("lỗi máy chủ nội bộ: {0}")]
     Internal(String),
+
+    #[error("lỗi database: {0}")]
+    Database(#[from] sqlx::Error),
 }
 
 impl IntoResponse for AppError {
@@ -25,6 +28,10 @@ impl IntoResponse for AppError {
             ),
             AppError::NotFound(msg) => (StatusCode::NOT_FOUND, msg.clone()),
             AppError::Internal(_) => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "đã có lỗi xảy ra, vui lòng thử lại".to_string(),
+            ),
+            AppError::Database(_) => (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "đã có lỗi xảy ra, vui lòng thử lại".to_string(),
             ),

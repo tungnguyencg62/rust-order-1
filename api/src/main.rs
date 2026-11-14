@@ -1,4 +1,5 @@
 mod config;
+mod db;
 mod error;
 mod routes;
 mod shutdown;
@@ -9,6 +10,8 @@ use std::sync::Arc;
 
 #[tokio::main]
 async fn main() {
+    dotenvy::dotenv().ok();
+
     tracing_subscriber::fmt()
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
         .init();
@@ -21,9 +24,24 @@ async fn main() {
     };
     tracing::info!(?config, "đã nạp cấu hình");
 
+    let pool = match db::connect(&config.database_url).await {
+        Ok(p) => p,
+        Err(e) => {
+            tracing::error!("lỗi kết nối database: {e}");
+            std::process::exit(1);
+        }
+    };
+
+    let check = sqlx::query_scalar::<_, i32>("SELECT 1")
+        .fetch_one(&pool)
+        .await
+        .expect("kiểm tra kết nối Postgres thất bại");
+    tracing::info!(check, "kết nối Postgres OK");
+
     let port = config.port;
     let state = AppState {
         config: Arc::new(config),
+        db: pool,
     };
 
     let app = routes::router(state);
