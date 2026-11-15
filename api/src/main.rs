@@ -40,22 +40,6 @@ async fn main() {
 
     tracing::info!("kết nối Postgres OK");
 
-    // --- TẠM THỜI: kiểm tra repository bằng tay, sẽ thay bằng test ở bước 3.5 ---
-    let demo_id = uuid::Uuid::new_v4();
-    let inserted = repository::profile::insert(&pool, demo_id)
-        .await
-        .expect("insert profile thất bại");
-    tracing::info!(?inserted, "đã insert profile demo");
-    let found = repository::profile::find_by_id(&pool, demo_id)
-        .await
-        .expect("find_by_id thất bại");
-    tracing::info!(?found, "đã tìm profile demo (mong đợi Some)");
-    let missing = repository::profile::find_by_id(&pool, uuid::Uuid::new_v4())
-        .await
-        .expect("find_by_id (missing) thất bại");
-    tracing::info!(?missing, "đã tìm profile không tồn tại (mong đợi None)");
-    // --- HẾT PHẦN TẠM THỜI ---
-
     let port = config.port;
     let state = AppState {
         config: Arc::new(config),
