@@ -32,11 +32,12 @@ async fn main() {
         }
     };
 
-    let check = sqlx::query_scalar::<_, i32>("SELECT 1")
-        .fetch_one(&pool)
-        .await
-        .expect("kiểm tra kết nối Postgres thất bại");
-    tracing::info!(check, "kết nối Postgres OK");
+    if let Err(e) = db::ping(&pool).await {
+        tracing::error!("{e}");
+        std::process::exit(1);
+    };
+
+    tracing::info!("kết nối Postgres OK");
 
     let port = config.port;
     let state = AppState {

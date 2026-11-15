@@ -9,3 +9,9 @@ pub async fn connect(database_url: &str) -> Result<PgPool, AppError> {
         .await?;
     Ok(pool)
 }
+pub async fn ping(pool: &PgPool) -> Result<(), AppError> {
+    sqlx::query_scalar::<_, i32>("SELECT 1")
+        .fetch_one(pool)
+        .await?;
+    Ok(())
+}
