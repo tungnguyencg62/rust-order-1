@@ -1,3 +1,3 @@
 mod claims;
 
-pub use claims::Claims;
+pub use claims::{Claims, verify};

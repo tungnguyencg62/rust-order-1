@@ -5,6 +5,7 @@ use std::fmt;
 pub struct Config {
     pub port: u16,
     pub database_url: String,
+    pub jwt_secret: String,
 }
 
 impl fmt::Debug for Config {
@@ -12,6 +13,7 @@ impl fmt::Debug for Config {
         f.debug_struct("Config")
             .field("port", &self.port)
             .field("database_url", &"<redacted>")
+            .field("jwt_secret", &"<redacted>")
             .finish()
     }
 }
@@ -25,5 +27,12 @@ pub fn load() -> Result<Config, AppError> {
     let database_url = env::var("DATABASE_URL")
         .map_err(|_| AppError::Config("thiếu biến DATABASE_URL trong môi trường".to_string()))?;
 
-    Ok(Config { port, database_url })
+    let jwt_secret = env::var("JWT_SECRET")
+        .map_err(|_| AppError::Config("thiếu biến JWT_SECRET trong môi trường".to_string()))?;
+
+    Ok(Config {
+        port,
+        database_url,
+        jwt_secret,
+    })
 }

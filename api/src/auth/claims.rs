@@ -1,6 +1,8 @@
-use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
+use jsonwebtoken::{Algorithm, DecodingKey, Validation, decode, errors::ErrorKind};
 use serde::Deserialize;
 use uuid::Uuid;
+
+use crate::error::AppError;
 
 #[derive(Debug, Deserialize)]
 pub struct Claims {
@@ -13,34 +15,92 @@ pub struct Claims {
     pub iat: i64,
 }
 
-/// Giải mã payload của JWT MÀ KHÔNG kiểm tra chữ ký.
-/// CHỈ dùng để xem thử cấu trúc dữ liệu — KHÔNG được dùng cho logic xác thực thật.
-/// Bước 4.2 sẽ thay thế hoàn toàn bằng verify có chữ ký.
-fn decode_unverified(token: &str) -> Result<Claims, String> {
-    let payload_b64 = token
-        .split('.')
-        .nth(1)
-        .ok_or_else(|| "JWT không đúng định dạng (thiếu phần payload)".to_string())?;
+pub fn verify(token: &str, secret: &str) -> Result<Claims, AppError> {
+    let mut validation = Validation::new(Algorithm::HS256);
+    validation.set_audience(&["authenticated"]);
 
-    let payload_bytes = URL_SAFE_NO_PAD
-        .decode(payload_b64)
-        .map_err(|e| format!("giải mã base64 thất bại: {e}"))?;
+    let key = DecodingKey::from_secret(secret.as_bytes())
+        .map_err(|e| AppError::Internal(format!("cấu hình JWT secret không hợp lệ: {e}")))?;
 
-    serde_json::from_slice(&payload_bytes).map_err(|e| format!("parse JSON thất bại: {e}"))
+    let data = decode::<Claims>(token, &key, &validation)
+        .map_err(|e| AppError::Unauthorized(describe_error(&e)))?;
+
+    Ok(data.claims)
 }
+
+fn describe_error(e: &jsonwebtoken::errors::Error) -> String {
+    match e.kind() {
+        ErrorKind::ExpiredSignature => "token đã hết hạn".to_string(),
+        ErrorKind::InvalidSignature => "chữ ký token không hợp lệ".to_string(),
+        ErrorKind::InvalidAudience => "token không đúng đối tượng sử dụng".to_string(),
+        _ => "token không hợp lệ".to_string(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    const DEMO_TOKEN: &str = "DÁN_ACCESS_TOKEN_THẬT_VÀO_ĐÂY";
-    const DEMO_EMAIL: &str = "tung@example.com";
+    async fn signup_and_login() -> (String, String) {
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let email = format!("test-claims-{nanos}@example.com");
+        let password = "TestPassword123!";
 
-    #[test]
-    fn decode_unverified_maps_fields_correctly() {
-        let claims = decode_unverified(DEMO_TOKEN).unwrap();
+        let client = reqwest::Client::new();
+        let body = serde_json::json!({ "email": email, "password": password });
+
+        client
+            .post("http://127.0.0.1:9999/signup")
+            .json(&body)
+            .send()
+            .await
+            .expect("gọi /signup thất bại — đảm bảo `docker compose up -d` đang chạy")
+            .error_for_status()
+            .expect("GoTrue trả lỗi khi signup");
+
+        let resp: serde_json::Value = client
+            .post("http://127.0.0.1:9999/token?grant_type=password")
+            .json(&body)
+            .send()
+            .await
+            .expect("gọi /token thất bại")
+            .json()
+            .await
+            .expect("parse response /token thất bại");
+
+        let token = resp["access_token"].as_str().unwrap().to_string();
+        (token, email)
+    }
+
+    fn test_secret() -> String {
+        std::env::var("JWT_SECRET").expect("thiếu JWT_SECRET — đã `source api/.env` chưa?")
+    }
+
+    #[tokio::test]
+    async fn verify_accepts_valid_token_and_decodes_claims() {
+        let (token, email) = signup_and_login().await;
+
+        let claims = verify(&token, &test_secret()).unwrap();
 
         assert_eq!(claims.aud, "authenticated");
-        assert_eq!(claims.role, "authenticated");
-        assert_eq!(claims.email.as_deref(), Some(DEMO_EMAIL));
+        assert_eq!(claims.email.as_deref(), Some(email.as_str()));
+    }
+
+    #[tokio::test]
+    async fn verify_rejects_token_signed_with_wrong_secret() {
+        let (token, _) = signup_and_login().await;
+
+        let result = verify(&token, "secret-hoan-toan-sai");
+
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn verify_rejects_garbage_token() {
+        let result = verify("khong.phai.jwt", &test_secret());
+        assert!(result.is_err());
     }
 }

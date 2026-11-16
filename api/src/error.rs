@@ -17,6 +17,9 @@ pub enum AppError {
 
     #[error("lỗi database: {0}")]
     Database(#[from] sqlx::Error),
+
+    #[error("chưa xác thực: {0}")]
+    Unauthorized(String),
 }
 
 impl IntoResponse for AppError {
@@ -35,6 +38,7 @@ impl IntoResponse for AppError {
                 StatusCode::INTERNAL_SERVER_ERROR,
                 "đã có lỗi xảy ra, vui lòng thử lại".to_string(),
             ),
+            AppError::Unauthorized(msg) => (StatusCode::UNAUTHORIZED, msg.clone()),
         };
         tracing::error!(error = %self, status = %status, "request thất bại");
         let body = axum::Json(serde_json::json!({ "error": public_message }));
