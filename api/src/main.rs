@@ -10,6 +10,9 @@ mod state;
 use state::AppState;
 use std::sync::Arc;
 
+#[cfg(test)]
+mod test_support;
+
 #[tokio::main]
 async fn main() {
     dotenvy::dotenv().ok();

@@ -40,40 +40,7 @@ fn describe_error(e: &jsonwebtoken::errors::Error) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    async fn signup_and_login() -> (String, String) {
-        let nanos = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_nanos();
-        let email = format!("test-claims-{nanos}@example.com");
-        let password = "TestPassword123!";
-
-        let client = reqwest::Client::new();
-        let body = serde_json::json!({ "email": email, "password": password });
-
-        client
-            .post("http://127.0.0.1:9999/signup")
-            .json(&body)
-            .send()
-            .await
-            .expect("gọi /signup thất bại — đảm bảo `docker compose up -d` đang chạy")
-            .error_for_status()
-            .expect("GoTrue trả lỗi khi signup");
-
-        let resp: serde_json::Value = client
-            .post("http://127.0.0.1:9999/token?grant_type=password")
-            .json(&body)
-            .send()
-            .await
-            .expect("gọi /token thất bại")
-            .json()
-            .await
-            .expect("parse response /token thất bại");
-
-        let token = resp["access_token"].as_str().unwrap().to_string();
-        (token, email)
-    }
+    use crate::test_support::{signup_and_login, unique_test_email};
 
     fn test_secret() -> String {
         std::env::var("JWT_SECRET").expect("thiếu JWT_SECRET — đã `source api/.env` chưa?")
@@ -81,7 +48,8 @@ mod tests {
 
     #[tokio::test]
     async fn verify_accepts_valid_token_and_decodes_claims() {
-        let (token, email) = signup_and_login().await;
+        let email = unique_test_email("test-claims");
+        let token = signup_and_login(&email, "TestPassword123!").await;
 
         let claims = verify(&token, &test_secret()).unwrap();
 
@@ -91,7 +59,8 @@ mod tests {
 
     #[tokio::test]
     async fn verify_rejects_token_signed_with_wrong_secret() {
-        let (token, _) = signup_and_login().await;
+        let email = unique_test_email("test-claims");
+        let token = signup_and_login(&email, "TestPassword123!").await;
 
         let result = verify(&token, "secret-hoan-toan-sai");
 
@@ -100,7 +69,7 @@ mod tests {
 
     #[tokio::test]
     async fn verify_rejects_garbage_token() {
-        let result = verify("khong.phai.jwt", &test_secret());
-        assert!(result.is_err());
+        let result = verify("khong.phai.jwt", &test_secret()).unwrap_err();
+        let _ = result; // chỉ cần xác nhận là Err, không cần kiểm tra nội dung
     }
 }
