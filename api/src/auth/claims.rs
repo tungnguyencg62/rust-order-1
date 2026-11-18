@@ -1,10 +1,10 @@
 use jsonwebtoken::{Algorithm, DecodingKey, Validation, decode, errors::ErrorKind};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::error::AppError;
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Claims {
     pub sub: Uuid,
     pub session_id: Uuid,

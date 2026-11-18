@@ -3,7 +3,39 @@ use serde::Serialize;
 
 use uuid::Uuid;
 
-use crate::{auth::AuthUser, state::AppState};
+use crate::{
+    auth::{AuthUser, Claims},
+    error::AppError,
+    state::AppState,
+};
+use jsonwebtoken::{EncodingKey, Header, encode};
+use std::time::{SystemTime, UNIX_EPOCH};
+
+fn now_secs() -> i64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_secs() as i64
+}
+
+fn make_claims(exp_offset_secs: i64) -> Claims {
+    Claims {
+        sub: Uuid::new_v4(),
+        session_id: Uuid::new_v4(),
+        aud: "authenticated".to_string(),
+        role: "".to_string(),
+        email: Some("fabricated@example.com".to_string()),
+        exp: now_secs() + exp_offset_secs,
+        iat: now_secs() - 10,
+    }
+}
+
+fn sign(claims: &Claims, secret: &str) -> String {
+    let decode_key =
+        EncodingKey::from_secret(secret.as_bytes()).expect("cấu hình JWT secret không hợp lệ");
+
+    encode(&Header::default(), claims, &decode_key).unwrap()
+}
 
 pub fn router() -> Router<AppState> {
     Router::new().route("/v1/me", get(me))
@@ -86,5 +118,47 @@ mod tests {
 
         assert_eq!(json["email"], email);
         assert_eq!(json["role"], "");
+    }
+    #[sqlx::test]
+    async fn me_with_expired_token_returns_401(pool: PgPool) {
+        let app = crate::routes::router(test_state(pool));
+        let secret =
+            std::env::var("JWT_SECRET").expect("thiếu JWT_SECRET — đã `source .env` chưa?");
+
+        let claims = make_claims(-120); // exp cách đây 120 giây
+        let token = sign(&claims, &secret);
+
+        let request = Request::builder()
+            .uri("/v1/me")
+            .header("Authorization", format!("Bearer {token}"))
+            .body(Body::empty())
+            .unwrap();
+
+        let response = app.oneshot(request).await.unwrap();
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+
+        let body = response.into_body().collect().await.unwrap().to_bytes();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["error"], "token đã hết hạn");
+    }
+    #[sqlx::test]
+    async fn me_with_wrong_signature_returns_401(pool: PgPool) {
+        let app = crate::routes::router(test_state(pool));
+
+        let claims = make_claims(300); // còn hạn 5 phút, nhưng ký sai secret
+        let token = sign(&claims, "secret-hoan-toan-sai-khac-voi-that");
+
+        let request = Request::builder()
+            .uri("/v1/me")
+            .header("Authorization", format!("Bearer {token}"))
+            .body(Body::empty())
+            .unwrap();
+
+        let response = app.oneshot(request).await.unwrap();
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+
+        let body = response.into_body().collect().await.unwrap().to_bytes();
+        let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(json["error"], "chữ ký token không hợp lệ");
     }
 }
