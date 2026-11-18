@@ -1,4 +1,5 @@
-use axum::{Json, Router, routing::get};
+use axum::{Json, Router, extract::State, routing::get};
+use chrono::{DateTime, Utc};
 use serde::Serialize;
 
 use uuid::Uuid;
@@ -6,7 +7,8 @@ use uuid::Uuid;
 use crate::{
     auth::{AuthUser, Claims},
     error::AppError,
-    state::AppState,
+    repository::profile,
+    state::{self, AppState},
 };
 use jsonwebtoken::{EncodingKey, Header, encode};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -46,14 +48,20 @@ struct MeResponse {
     id: Uuid,
     email: Option<String>,
     role: String,
+    profile_created_at: DateTime<Utc>,
 }
 
-async fn me(AuthUser { claims }: AuthUser) -> Json<MeResponse> {
-    Json(MeResponse {
+async fn me(
+    State(state): State<AppState>,
+    AuthUser { claims }: AuthUser,
+) -> Result<Json<MeResponse>, AppError> {
+    let profile = profile::ensure_exists(&state.db, claims.sub).await?;
+    Ok(Json(MeResponse {
         id: claims.sub,
         email: claims.email,
         role: claims.role,
-    })
+        profile_created_at: profile.created_at,
+    }))
 }
 
 #[cfg(test)]
@@ -160,5 +168,41 @@ mod tests {
         let body = response.into_body().collect().await.unwrap().to_bytes();
         let json: serde_json::Value = serde_json::from_slice(&body).unwrap();
         assert_eq!(json["error"], "chữ ký token không hợp lệ");
+    }
+    #[sqlx::test]
+    async fn me_creates_profile_on_first_call_and_is_idempotent(pool: PgPool) {
+        let app = crate::routes::router(test_state(pool.clone()));
+        let email = unique_test_email("test-me-upsert");
+        let token = signup_and_login(&email, "TestPassword123!").await;
+
+        let request = Request::builder()
+            .uri("/v1/me")
+            .header("Authorization", format!("Bearer {token}"))
+            .body(Body::empty())
+            .unwrap();
+        let response = app.clone().oneshot(request).await.unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = response.into_body().collect().await.unwrap().to_bytes();
+        let first: serde_json::Value = serde_json::from_slice(&body).unwrap();
+
+        let request = Request::builder()
+            .uri("/v1/me")
+            .header("Authorization", format!("Bearer {token}"))
+            .body(Body::empty())
+            .unwrap();
+        let response = app.oneshot(request).await.unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = response.into_body().collect().await.unwrap().to_bytes();
+        let second: serde_json::Value = serde_json::from_slice(&body).unwrap();
+
+        assert_eq!(first["profile_created_at"], second["profile_created_at"]);
+
+        let id = Uuid::parse_str(first["id"].as_str().unwrap()).unwrap();
+        let count: i64 = sqlx::query_scalar("SELECT count(*) FROM profiles WHERE id = $1")
+            .bind(id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+        assert_eq!(count, 1);
     }
 }
