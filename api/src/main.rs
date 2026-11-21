@@ -1,4 +1,5 @@
 mod auth;
+mod cache;
 mod config;
 mod db;
 mod error;
@@ -44,10 +45,26 @@ async fn main() {
 
     tracing::info!("kết nối Postgres OK");
 
+    let redis_url = config.redis_url.clone();
+    let mut redis_conn = match cache::connect(&redis_url).await {
+        Ok(c) => c,
+        Err(e) => {
+            tracing::error!("{e}");
+            std::process::exit(1);
+        }
+    };
+
+    if let Err(e) = cache::ping(&mut redis_conn).await {
+        tracing::error!("{e}");
+        std::process::exit(1);
+    };
+    tracing::info!("kết nối Redis OK");
+
     let port = config.port;
     let state = AppState {
         config: Arc::new(config),
         db: pool,
+        redis: redis_conn,
     };
 
     let app = routes::router(state);

@@ -6,6 +6,7 @@ pub struct Config {
     pub port: u16,
     pub database_url: String,
     pub jwt_secret: String,
+    pub redis_url: String,
 }
 
 impl fmt::Debug for Config {
@@ -14,6 +15,7 @@ impl fmt::Debug for Config {
             .field("port", &self.port)
             .field("database_url", &"<redacted>")
             .field("jwt_secret", &"<redacted>")
+            .field("redis_url", &"<redacted>")
             .finish()
     }
 }
@@ -30,9 +32,12 @@ pub fn load() -> Result<Config, AppError> {
     let jwt_secret = env::var("JWT_SECRET")
         .map_err(|_| AppError::Config("thiếu biến JWT_SECRET trong môi trường".to_string()))?;
 
+    let redis_url = env::var("REDIS_URL")
+        .map_err(|_| AppError::Config("thiếu biến REDIS_URL trong môi trường".to_string()))?;
     Ok(Config {
         port,
         database_url,
         jwt_secret,
+        redis_url,
     })
 }

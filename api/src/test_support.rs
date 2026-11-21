@@ -1,3 +1,42 @@
+use crate::auth::Claims;
+use jsonwebtoken::{EncodingKey, Header, encode};
+use std::time::{SystemTime, UNIX_EPOCH};
+use uuid::Uuid;
+
+pub(crate) fn now_secs() -> i64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_secs() as i64
+}
+
+pub(crate) fn make_claims(
+    role: &str,
+    app_metadata: serde_json::Value,
+    exp_offset_secs: i64,
+) -> Claims {
+    Claims {
+        sub: Uuid::new_v4(),
+        session_id: Uuid::new_v4(),
+        aud: "authenticated".to_string(),
+        role: role.to_string(),
+        email: Some("fabricated@example.com".to_string()),
+        app_metadata,
+        exp: now_secs() + exp_offset_secs,
+        iat: now_secs() - 10,
+    }
+}
+
+pub(crate) fn sign(claims: &Claims, secret: &str) -> String {
+    let decode_key =
+        EncodingKey::from_secret(secret.as_bytes()).expect("cấu hình JWT secret không hợp lệ");
+    encode(&Header::default(), claims, &decode_key).unwrap()
+}
+
+pub(crate) fn service_role_token(secret: &str) -> String {
+    let claims = make_claims("service_role", serde_json::json!({}), 3600);
+    sign(&claims, secret)
+}
 pub(crate) async fn signup_and_login(email: &str, password: &str) -> String {
     let client = reqwest::Client::new();
     let body = serde_json::json!({ "email": email, "password": password });

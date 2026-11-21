@@ -1,3 +1,4 @@
+use redis::aio::ConnectionManager;
 use sqlx::PgPool;
 
 use crate::config::Config;
@@ -7,4 +8,5 @@ use std::sync::Arc;
 pub struct AppState {
     pub config: Arc<Config>,
     pub db: PgPool,
+    pub redis: ConnectionManager,
 }

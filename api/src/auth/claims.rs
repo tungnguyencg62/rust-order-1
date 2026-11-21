@@ -11,8 +11,16 @@ pub struct Claims {
     pub aud: String,
     pub role: String,
     pub email: Option<String>,
+    #[serde(default)]
+    pub app_metadata: serde_json::Value,
     pub exp: i64,
     pub iat: i64,
+}
+
+impl Claims {
+    pub fn custom_role(&self) -> Option<&str> {
+        self.app_metadata.get("role").and_then(|v| v.as_str())
+    }
 }
 
 pub fn verify(token: &str, secret: &str) -> Result<Claims, AppError> {
@@ -71,5 +79,21 @@ mod tests {
     async fn verify_rejects_garbage_token() {
         let result = verify("khong.phai.jwt", &test_secret()).unwrap_err();
         let _ = result; // chỉ cần xác nhận là Err, không cần kiểm tra nội dung
+    }
+
+    #[test]
+    fn custom_role_reads_from_app_metadata() {
+        let claims = crate::test_support::make_claims(
+            "authenticated",
+            serde_json::json!({"role": "merchant"}),
+            300,
+        );
+        assert_eq!(claims.custom_role(), Some("merchant"));
+    }
+
+    #[test]
+    fn custom_role_is_none_when_absent() {
+        let claims = crate::test_support::make_claims("authenticated", serde_json::json!({}), 300);
+        assert_eq!(claims.custom_role(), None);
     }
 }

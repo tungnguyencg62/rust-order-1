@@ -20,6 +20,9 @@ pub enum AppError {
 
     #[error("chưa xác thực: {0}")]
     Unauthorized(String),
+
+    #[error("không đủ quyền: {0}")]
+    Forbidden(String),
 }
 
 impl IntoResponse for AppError {
@@ -39,6 +42,7 @@ impl IntoResponse for AppError {
                 "đã có lỗi xảy ra, vui lòng thử lại".to_string(),
             ),
             AppError::Unauthorized(msg) => (StatusCode::UNAUTHORIZED, msg.clone()),
+            AppError::Forbidden(msg) => (StatusCode::FORBIDDEN, msg.clone()),
         };
         tracing::error!(error = %self, status = %status, "request thất bại");
         let body = axum::Json(serde_json::json!({ "error": public_message }));

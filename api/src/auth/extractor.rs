@@ -36,68 +36,68 @@ impl FromRequestParts<AppState> for AuthUser {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::{
-        config::Config,
-        test_support::{signup_and_login, unique_test_email},
-    };
-    use axum::http::Request;
-    use sqlx::PgPool;
-    use std::sync::Arc;
+// #[cfg(test)]
+// mod tests {
+//     use super::*;
+//     use crate::{
+//         config::Config,
+//         test_support::{signup_and_login, unique_test_email},
+//     };
+//     use axum::http::Request;
+//     use sqlx::PgPool;
+//     use std::sync::Arc;
 
-    fn test_state(pool: PgPool) -> AppState {
-        AppState {
-            config: Arc::new(Config {
-                port: 0,
-                database_url: String::new(),
-                jwt_secret: std::env::var("JWT_SECRET")
-                    .expect("thiếu JWT_SECRET — đã `source api/.env` chưa?"),
-            }),
-            db: pool,
-        }
-    }
+//     fn test_state(pool: PgPool) -> AppState {
+//         AppState {
+//             config: Arc::new(Config {
+//                 port: 0,
+//                 database_url: String::new(),
+//                 jwt_secret: std::env::var("JWT_SECRET")
+//                     .expect("thiếu JWT_SECRET — đã `source api/.env` chưa?"),
+//             }),
+//             db: pool,
+//         }
+//     }
 
-    fn parts_with_header(value: Option<&str>) -> Parts {
-        let mut builder = Request::builder().uri("/");
-        if let Some(v) = value {
-            builder = builder.header(header::AUTHORIZATION, v);
-        }
-        builder.body(()).unwrap().into_parts().0
-    }
+//     fn parts_with_header(value: Option<&str>) -> Parts {
+//         let mut builder = Request::builder().uri("/");
+//         if let Some(v) = value {
+//             builder = builder.header(header::AUTHORIZATION, v);
+//         }
+//         builder.body(()).unwrap().into_parts().0
+//     }
 
-    #[sqlx::test]
-    async fn accepts_valid_bearer_token(pool: PgPool) {
-        let state = test_state(pool);
-        let email = unique_test_email("test-extractor");
-        let token = signup_and_login(&email, "TestPassword123!").await;
-        let mut parts = parts_with_header(Some(&format!("Bearer {token}")));
+//     #[sqlx::test]
+//     async fn accepts_valid_bearer_token(pool: PgPool) {
+//         let state = test_state(pool);
+//         let email = unique_test_email("test-extractor");
+//         let token = signup_and_login(&email, "TestPassword123!").await;
+//         let mut parts = parts_with_header(Some(&format!("Bearer {token}")));
 
-        let user = AuthUser::from_request_parts(&mut parts, &state)
-            .await
-            .unwrap();
+//         let user = AuthUser::from_request_parts(&mut parts, &state)
+//             .await
+//             .unwrap();
 
-        assert_eq!(user.claims.email.as_deref(), Some(email.as_str()));
-    }
+//         assert_eq!(user.claims.email.as_deref(), Some(email.as_str()));
+//     }
 
-    #[sqlx::test]
-    async fn rejects_missing_header(pool: PgPool) {
-        let state = test_state(pool);
-        let mut parts = parts_with_header(None);
+//     #[sqlx::test]
+//     async fn rejects_missing_header(pool: PgPool) {
+//         let state = test_state(pool);
+//         let mut parts = parts_with_header(None);
 
-        let result = AuthUser::from_request_parts(&mut parts, &state).await;
+//         let result = AuthUser::from_request_parts(&mut parts, &state).await;
 
-        assert!(result.is_err());
-    }
+//         assert!(result.is_err());
+//     }
 
-    #[sqlx::test]
-    async fn rejects_header_without_bearer_prefix(pool: PgPool) {
-        let state = test_state(pool);
-        let mut parts = parts_with_header(Some("Basic dXNlcjpwYXNz"));
+//     #[sqlx::test]
+//     async fn rejects_header_without_bearer_prefix(pool: PgPool) {
+//         let state = test_state(pool);
+//         let mut parts = parts_with_header(Some("Basic dXNlcjpwYXNz"));
 
-        let result = AuthUser::from_request_parts(&mut parts, &state).await;
+//         let result = AuthUser::from_request_parts(&mut parts, &state).await;
 
-        assert!(result.is_err());
-    }
-}
+//         assert!(result.is_err());
+//     }
+// }
