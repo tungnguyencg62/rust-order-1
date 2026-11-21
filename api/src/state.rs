@@ -1,12 +1,11 @@
-use redis::aio::ConnectionManager;
 use sqlx::PgPool;
 
-use crate::config::Config;
+use crate::{cache::RevocationStore, config::Config};
 use std::sync::Arc;
 
 #[derive(Clone)]
 pub struct AppState {
     pub config: Arc<Config>,
     pub db: PgPool,
-    pub redis: ConnectionManager,
+    pub revocation: Arc<dyn RevocationStore>,
 }

@@ -60,11 +60,14 @@ async fn main() {
     };
     tracing::info!("kết nối Redis OK");
 
+    let revocation: Arc<dyn cache::RevocationStore> =
+        Arc::new(cache::RedisRevocationStore::new(redis_conn));
+
     let port = config.port;
     let state = AppState {
         config: Arc::new(config),
         db: pool,
-        redis: redis_conn,
+        revocation: revocation,
     };
 
     let app = routes::router(state);

@@ -1,6 +1,7 @@
-use redis::aio::ConnectionManager;
-
+mod revocation;
 use crate::error::AppError;
+use redis::aio::ConnectionManager;
+pub use revocation::{RedisRevocationStore, RevocationStore};
 
 pub async fn connect(url: &str) -> Result<ConnectionManager, AppError> {
     let client = redis::Client::open(url)
