@@ -7,6 +7,7 @@ use uuid::Uuid;
 pub trait RevocationStore: Send + Sync {
     async fn is_session_revoked(&self, session_id: Uuid) -> Result<bool, AppError>;
     async fn is_user_revoked(&self, user_id: Uuid) -> Result<bool, AppError>;
+    async fn is_revoked(&self, session_id: Uuid, user_id: Uuid) -> Result<bool, AppError>;
     async fn revoke_session(&self, session_id: Uuid, ttl_secs: i64) -> Result<(), AppError>;
     async fn revoke_user(&self, user_id: Uuid, ttl_secs: i64) -> Result<(), AppError>;
 }
@@ -28,6 +29,19 @@ impl RevocationStore for RedisRevocationStore {
 
     async fn is_user_revoked(&self, user_id: Uuid) -> Result<bool, AppError> {
         is_revoked(&mut self.conn.clone(), &format!("revoked:uid:{user_id}")).await
+    }
+
+    async fn is_revoked(&self, session_id: Uuid, user_id: Uuid) -> Result<bool, AppError> {
+        let sid_key = format!("revoked:sid:{session_id}");
+        let uid_key = format!("revoked:uid:{user_id}");
+
+        let count: i64 = redis::cmd("EXISTS")
+            .arg(&sid_key)
+            .arg(&uid_key)
+            .query_async(&mut self.conn.clone())
+            .await
+            .map_err(|e| AppError::Internal(format!("kiểm tra Redis thất bại: {e}")))?;
+        Ok(count > 0)
     }
 
     async fn revoke_session(&self, session_id: Uuid, ttl_secs: i64) -> Result<(), AppError> {
@@ -123,5 +137,20 @@ mod tests {
         tokio::time::sleep(std::time::Duration::from_millis(1500)).await;
 
         assert!(!store.is_session_revoked(session_id).await.unwrap());
+    }
+    #[tokio::test]
+    async fn is_revoked_checks_both_namespaces() {
+        let store = test_store().await;
+        let session_id = Uuid::new_v4();
+        let user_id = Uuid::new_v4();
+
+        assert!(!store.is_revoked(session_id, user_id).await.unwrap());
+
+        store.revoke_session(session_id, 60).await.unwrap();
+        assert!(store.is_revoked(session_id, user_id).await.unwrap());
+
+        let session_id2 = Uuid::new_v4();
+        store.revoke_user(user_id, 60).await.unwrap();
+        assert!(store.is_revoked(session_id2, user_id).await.unwrap());
     }
 }
