@@ -1,3 +1,5 @@
+use std::time::{SystemTime, UNIX_EPOCH};
+
 use jsonwebtoken::{Algorithm, DecodingKey, Validation, decode, errors::ErrorKind};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -20,6 +22,14 @@ pub struct Claims {
 impl Claims {
     pub fn custom_role(&self) -> Option<&str> {
         self.app_metadata.get("role").and_then(|v| v.as_str())
+    }
+
+    pub fn remaining_ttl_secs(&self) -> i64 {
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as i64;
+        (self.exp - now).max(1)
     }
 }
 

@@ -16,6 +16,7 @@ const REVOCATION_CHECK_TIMEOUT: Duration = Duration::from_millis(100);
 
 pub struct AuthUser {
     pub claims: Claims,
+    pub token: String,
 }
 
 impl FromRequestParts<AppState> for AuthUser {
@@ -61,7 +62,10 @@ impl FromRequestParts<AppState> for AuthUser {
                 "phiên đăng nhập đã bị thu hồi hoặc tài khoản đã bị khóa".to_string(),
             ));
         }
-        Ok(AuthUser { claims })
+        Ok(AuthUser {
+            claims,
+            token: token.to_string(),
+        })
     }
 }
 

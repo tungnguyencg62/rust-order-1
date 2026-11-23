@@ -46,7 +46,7 @@ struct MeResponse {
 
 async fn me(
     State(state): State<AppState>,
-    AuthUser { claims }: AuthUser,
+    AuthUser { claims, .. }: AuthUser,
 ) -> Result<Json<MeResponse>, AppError> {
     let profile = profile::ensure_exists(&state.db, claims.sub).await?;
     Ok(Json(MeResponse {
