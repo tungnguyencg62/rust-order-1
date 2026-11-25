@@ -6,6 +6,10 @@ use uuid::Uuid;
 
 use crate::error::AppError;
 
+/// Phải khớp chính xác GOTRUE_JWT_EXP trong docker-compose.yml.
+/// Đây là khoảng hở tối đa denylist cần che — không hơn, không kém.
+pub const MAX_TOKEN_LIFETIME_SECS: i64 = 300;
+
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Claims {
     pub sub: Uuid,

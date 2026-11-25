@@ -102,7 +102,6 @@ pub(crate) async fn signup_and_login_with_id(email: &str, password: &str) -> (St
     let id = Uuid::parse_str(resp["user"]["id"].as_str().unwrap()).unwrap();
     (token, id)
 }
-
 pub(crate) async fn signup_and_login(email: &str, password: &str) -> String {
     signup_and_login_with_id(email, password).await.0
 }

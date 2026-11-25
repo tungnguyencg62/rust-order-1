@@ -1,3 +1,4 @@
+mod admin;
 mod health;
 mod logout;
 mod me;
@@ -15,6 +16,7 @@ pub fn router(state: AppState) -> Router {
         .merge(ready::router())
         .merge(me::router())
         .merge(logout::router())
+        .merge(admin::router())
         .with_state(state)
         .layer(TraceLayer::new_for_http())
 }
