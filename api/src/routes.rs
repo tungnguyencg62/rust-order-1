@@ -3,6 +3,7 @@ mod health;
 mod logout;
 mod me;
 mod misc;
+mod products;
 mod ready;
 
 use crate::state::AppState;
@@ -17,6 +18,7 @@ pub fn router(state: AppState) -> Router {
         .merge(me::router())
         .merge(logout::router())
         .merge(admin::router())
+        .merge(products::router())
         .with_state(state)
         .layer(TraceLayer::new_for_http())
 }
