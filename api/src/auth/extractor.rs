@@ -73,10 +73,13 @@ impl FromRequestParts<AppState> for AuthUser {
 mod tests {
     use super::*;
     use crate::test_support::{
-        parts_with_auth_header, signup_and_login, test_state, unique_test_email,
+        parts_with_auth_header, signup_and_login, test_state, test_state_with_revocation,
+        unique_test_email,
     };
     use axum::http::Request;
     use sqlx::PgPool;
+    use std::sync::Arc;
+    use uuid::Uuid;
 
     fn parts_with_header(value: Option<&str>) -> Parts {
         let mut builder = Request::builder().uri("/");
@@ -152,5 +155,80 @@ mod tests {
         let result = AuthUser::from_request_parts(&mut parts, &state).await;
 
         assert!(result.is_err());
+    }
+
+    struct AlwaysErrorsRevocationStore;
+
+    #[async_trait::async_trait]
+    impl crate::cache::RevocationStore for AlwaysErrorsRevocationStore {
+        async fn is_session_revoked(&self, _session_id: Uuid) -> Result<bool, AppError> {
+            Err(AppError::Internal("giả lập Redis lỗi".to_string()))
+        }
+        async fn is_user_revoked(&self, _user_id: Uuid) -> Result<bool, AppError> {
+            Err(AppError::Internal("giả lập Redis lỗi".to_string()))
+        }
+        async fn is_revoked(&self, _session_id: Uuid, _user_id: Uuid) -> Result<bool, AppError> {
+            Err(AppError::Internal("giả lập Redis lỗi".to_string()))
+        }
+        async fn revoke_session(&self, _session_id: Uuid, _ttl_secs: i64) -> Result<(), AppError> {
+            Ok(())
+        }
+        async fn revoke_user(&self, _user_id: Uuid, _ttl_secs: i64) -> Result<(), AppError> {
+            Ok(())
+        }
+    }
+
+    struct AlwaysTimesOutRevocationStore;
+
+    #[async_trait::async_trait]
+    impl crate::cache::RevocationStore for AlwaysTimesOutRevocationStore {
+        async fn is_session_revoked(&self, _session_id: Uuid) -> Result<bool, AppError> {
+            tokio::time::sleep(std::time::Duration::from_secs(10)).await;
+            Ok(false)
+        }
+        async fn is_user_revoked(&self, _user_id: Uuid) -> Result<bool, AppError> {
+            tokio::time::sleep(std::time::Duration::from_secs(10)).await;
+            Ok(false)
+        }
+        async fn is_revoked(&self, _session_id: Uuid, _user_id: Uuid) -> Result<bool, AppError> {
+            tokio::time::sleep(std::time::Duration::from_secs(10)).await;
+            Ok(false)
+        }
+        async fn revoke_session(&self, _session_id: Uuid, _ttl_secs: i64) -> Result<(), AppError> {
+            Ok(())
+        }
+        async fn revoke_user(&self, _user_id: Uuid, _ttl_secs: i64) -> Result<(), AppError> {
+            Ok(())
+        }
+    }
+
+    #[sqlx::test]
+    async fn fail_open_when_revocation_check_errors(pool: PgPool) {
+        let state = test_state_with_revocation(pool, Arc::new(AlwaysErrorsRevocationStore));
+        let email = unique_test_email("test-failopen-error");
+        let token = signup_and_login(&email, "TestPassword123!").await;
+        let mut parts = parts_with_auth_header(Some(&format!("Bearer {token}")));
+
+        let result = AuthUser::from_request_parts(&mut parts, &state).await;
+
+        assert!(result.is_ok());
+    }
+
+    #[sqlx::test]
+    async fn fail_open_when_revocation_check_times_out(pool: PgPool) {
+        let state = test_state_with_revocation(pool, Arc::new(AlwaysTimesOutRevocationStore));
+        let email = unique_test_email("test-failopen-timeout");
+        let token = signup_and_login(&email, "TestPassword123!").await;
+        let mut parts = parts_with_auth_header(Some(&format!("Bearer {token}")));
+
+        let started = std::time::Instant::now();
+        let result = AuthUser::from_request_parts(&mut parts, &state).await;
+        let elapsed = started.elapsed();
+
+        assert!(result.is_ok());
+        assert!(
+            elapsed < std::time::Duration::from_secs(1),
+            "phải trả lời trong vòng 1 giây nhờ timeout, thực tế mất {elapsed:?}"
+        );
     }
 }
