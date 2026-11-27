@@ -3,6 +3,7 @@ mod cache;
 mod config;
 mod db;
 mod error;
+mod order_status;
 mod repository;
 mod routes;
 mod shutdown;
