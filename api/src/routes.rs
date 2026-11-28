@@ -3,6 +3,7 @@ mod health;
 mod logout;
 mod me;
 mod misc;
+mod orders;
 mod products;
 mod ready;
 
@@ -19,6 +20,7 @@ pub fn router(state: AppState) -> Router {
         .merge(logout::router())
         .merge(admin::router())
         .merge(products::router())
+        .merge(orders::router())
         .with_state(state)
         .layer(TraceLayer::new_for_http())
 }

@@ -26,6 +26,9 @@ pub enum AppError {
 
     #[error("không thể chuyển trạng thái: {0}")]
     InvalidTransition(String),
+
+    #[error("yêu cầu không hợp lệ: {0}")]
+    BadRequest(String),
 }
 
 impl IntoResponse for AppError {
@@ -47,6 +50,7 @@ impl IntoResponse for AppError {
             AppError::Unauthorized(msg) => (StatusCode::UNAUTHORIZED, msg.clone()),
             AppError::Forbidden(msg) => (StatusCode::FORBIDDEN, msg.clone()),
             AppError::InvalidTransition(msg) => (StatusCode::CONFLICT, msg.clone()),
+            AppError::BadRequest(msg) => (StatusCode::BAD_REQUEST, msg.clone()),
         };
         tracing::error!(error = %self, status = %status, "request thất bại");
         let body = axum::Json(serde_json::json!({ "error": public_message }));
